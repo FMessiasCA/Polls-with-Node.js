@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { randomUUID, setEngine } from "node:crypto"
 import { prisma } from '../lib/prisma';
 import { FastifyInstance } from 'fastify';
+import { redis } from '../lib/redis';
 
 export async function voteOnPoll(app: FastifyInstance) {
     app.post('/polls/:pollId/votes', async (request, reply) => {
@@ -34,10 +35,12 @@ export async function voteOnPoll(app: FastifyInstance) {
                         id: userPreviousVoteOnPoll.id,
                     }
                 })
+
+                await redis.zincrby(pollId, -1, userPreviousVoteOnPoll.pollOptionId)
             } else if (userPreviousVoteOnPoll) {
                 return reply.status(400).send({ message: "Você já votou nessa enquete!" })
-            }
-        }
+            };
+        };
 
         if (!sessionId) {
             sessionId = randomUUID();
@@ -48,7 +51,7 @@ export async function voteOnPoll(app: FastifyInstance) {
                 signed: true,
                 httpOnly: true,
             });
-        }
+        };
 
         await prisma.vote.create({
             data: {
@@ -56,7 +59,10 @@ export async function voteOnPoll(app: FastifyInstance) {
                 pollId,
                 pollOptionId,
             }
-        })
+        });
+
+        await redis.zincrby(pollId, 1, pollOptionId);
+        /* Essa enquete, que está incrementando o valor de 1 (escolha), tem esses hanking nas opções da enquete */
 
         return reply.status(201).send();
     });
